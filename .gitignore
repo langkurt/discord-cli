@@ -1,0 +1,6 @@
+.discocli/
+dist/
+*.db
+token
+*.log
+discocli
