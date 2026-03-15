@@ -50,15 +50,23 @@ changelog:
       - Merge branch
 
 brews:
-  - name: discocli
-    repository:
+  - repository:
       owner: virat-mankali
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Formula
     homepage: "https://github.com/virat-mankali/discord-cli"
     description: "Discord CLI — sync, search, send from your terminal. MCP-ready for AI agents."
     license: "MIT"
-    test: |
-      system "#{bin}/discocli", "--version"
     install: |
       bin.install "discocli"
+    test: |
+      system "#{bin}/discocli", "--help"
+
+release:
+  github:
+    owner: virat-mankali
+    name: discord-cli
+  draft: false
+  prerelease: auto
+  name_template: "v{{ .Version }}"
