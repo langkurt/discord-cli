@@ -3,4 +3,4 @@ dist/
 *.db
 token
 *.log
-discocli
+/discocli
