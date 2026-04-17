@@ -55,7 +55,7 @@ func (db *DB) TopReacted(opts TopOptions) ([]TopReactedResult, error) {
 			COALESCE(g.name, 'DM') AS guild_name
 		FROM messages m
 		JOIN channels c ON m.channel_id = c.id
-		LEFT JOIN guilds g ON m.guild_id = g.id
+		LEFT JOIN guilds g ON c.guild_id = g.id
 		%s
 		ORDER BY m.reaction_count DESC
 		LIMIT ?
