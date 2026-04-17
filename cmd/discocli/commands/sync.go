@@ -248,11 +248,16 @@ func syncChannelHistory(session *discordgo.Session, db *storage.DB, channelID, s
 }
 
 func upsertMsg(db *storage.DB, m *discordgo.Message) error {
+	reactions := 0
+	for _, r := range m.Reactions {
+		reactions += r.Count
+	}
 	if err := db.UpsertMessage(
 		m.ID, m.ChannelID, m.GuildID,
 		m.Author.ID, m.Author.Username,
 		m.Content, m.Timestamp,
 		m.EditedTimestamp != nil && !m.EditedTimestamp.IsZero(),
+		reactions,
 	); err != nil {
 		return err
 	}
@@ -271,7 +276,7 @@ func runGatewaySync(session *discordgo.Session, db *storage.DB) error {
 		_ = db.UpsertMessage(
 			m.ID, m.ChannelID, m.GuildID,
 			m.Author.ID, m.Author.Username,
-			m.Content, ts, false,
+			m.Content, ts, false, 0,
 		)
 		name, _ := db.GetChannelName(m.ChannelID)
 		if name == "" {

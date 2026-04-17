@@ -116,6 +116,8 @@ func (db *DB) migrate() error {
 		`CREATE INDEX IF NOT EXISTS idx_attachments_local_path ON attachments(local_path)`,
 		// Additive migrations for existing databases
 		`ALTER TABLE channels ADD COLUMN parent_id TEXT`,
+		`ALTER TABLE messages ADD COLUMN reaction_count INTEGER NOT NULL DEFAULT 0`,
+		`CREATE INDEX IF NOT EXISTS idx_messages_reactions ON messages(reaction_count DESC)`,
 	}
 
 	for _, stmt := range stmts {

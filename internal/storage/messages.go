@@ -6,15 +6,15 @@ import (
 )
 
 // UpsertMessage inserts or replaces a message (idempotent for sync).
-func (db *DB) UpsertMessage(id, channelID, guildID, authorID, authorName, content string, timestamp time.Time, edited bool) error {
+func (db *DB) UpsertMessage(id, channelID, guildID, authorID, authorName, content string, timestamp time.Time, edited bool, reactionCount int) error {
 	editedInt := 0
 	if edited {
 		editedInt = 1
 	}
 	_, err := db.conn.Exec(`
-		INSERT OR REPLACE INTO messages (id, channel_id, guild_id, author_id, author_name, content, timestamp, edited)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-	`, id, channelID, guildID, authorID, authorName, content, timestamp.UTC().Format(time.RFC3339), editedInt)
+		INSERT OR REPLACE INTO messages (id, channel_id, guild_id, author_id, author_name, content, timestamp, edited, reaction_count)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, id, channelID, guildID, authorID, authorName, content, timestamp.UTC().Format(time.RFC3339), editedInt, reactionCount)
 	if err != nil {
 		return fmt.Errorf("upsert message %s: %w", id, err)
 	}

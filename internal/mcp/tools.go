@@ -270,11 +270,16 @@ func registerSyncChannel(s *server.MCPServer, storeDir string) {
 
 		err = discord.FetchMessages(session, channelID, func(msgs []*discordgo.Message) error {
 			for _, m := range msgs {
+				reactions := 0
+				for _, r := range m.Reactions {
+					reactions += r.Count
+				}
 				if err := db.UpsertMessage(
 					m.ID, m.ChannelID, m.GuildID,
 					m.Author.ID, m.Author.Username,
 					m.Content, m.Timestamp,
 					m.EditedTimestamp != nil && !m.EditedTimestamp.IsZero(),
+					reactions,
 				); err != nil {
 					return err
 				}
