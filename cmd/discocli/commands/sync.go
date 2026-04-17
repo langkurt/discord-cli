@@ -264,6 +264,28 @@ func upsertMsg(db *storage.DB, m *discordgo.Message) error {
 	for _, a := range m.Attachments {
 		_ = db.UpsertAttachment(a.ID, m.ID, m.ChannelID, a.URL, a.Filename, a.ContentType, int64(a.Size))
 	}
+	// Capture embed images: use Discord's own CDN proxy URL (no scraping needed).
+	// m.Embeds is populated when Discord generates a preview for a linked URL.
+	for _, emb := range m.Embeds {
+		if emb.Image == nil {
+			continue
+		}
+		srcURL := emb.Image.URL
+		proxyURL := emb.Image.ProxyURL
+		if srcURL == "" && proxyURL == "" {
+			continue
+		}
+		if srcURL == "" {
+			srcURL = proxyURL
+		}
+		id := discord.LinkID(m.ID, srcURL)
+		_ = db.UpsertLink(id, m.ID, m.ChannelID, srcURL, proxyURL)
+	}
+	// Also capture text URLs from content for channels where embeds weren't generated.
+	for _, u := range discord.ExtractURLs(m.Content) {
+		id := discord.LinkID(m.ID, u)
+		_ = db.UpsertLink(id, m.ID, m.ChannelID, u, "")
+	}
 	return nil
 }
 

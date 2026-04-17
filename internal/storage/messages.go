@@ -70,6 +70,33 @@ func (db *DB) UpdateSyncState(channelID, newestID, oldestID string) error {
 	return err
 }
 
+// MessageRow is a minimal message used for URL extraction.
+type MessageRow struct {
+	ID      string
+	Content string
+}
+
+// MessagesWithContent returns all messages in a channel that have non-empty content.
+func (db *DB) MessagesWithContent(channelID string) ([]MessageRow, error) {
+	rows, err := db.conn.Query(`
+		SELECT id, content FROM messages
+		WHERE channel_id = ? AND content != ''
+	`, channelID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var result []MessageRow
+	for rows.Next() {
+		var m MessageRow
+		if err := rows.Scan(&m.ID, &m.Content); err != nil {
+			return nil, err
+		}
+		result = append(result, m)
+	}
+	return result, rows.Err()
+}
+
 // MessageCount returns the number of messages stored for a channel.
 func (db *DB) MessageCount(channelID string) (int, error) {
 	var count int
