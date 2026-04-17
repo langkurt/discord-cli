@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/virat-mankali/discord-cli/internal/storage"
+	"github.com/langkurt/discord-cli/internal/storage"
 )
 
 // DownloadOptions configures a batch download run.

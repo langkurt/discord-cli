@@ -1,4 +1,4 @@
-module github.com/virat-mankali/discord-cli
+module github.com/langkurt/discord-cli
 
 go 1.25.0
 

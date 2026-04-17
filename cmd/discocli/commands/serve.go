@@ -2,7 +2,7 @@ package commands
 
 import (
 	"github.com/spf13/cobra"
-	"github.com/virat-mankali/discord-cli/internal/mcp"
+	"github.com/langkurt/discord-cli/internal/mcp"
 )
 
 var serveCmd = &cobra.Command{

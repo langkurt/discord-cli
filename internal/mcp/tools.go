@@ -9,9 +9,9 @@ import (
 	"github.com/bwmarrin/discordgo"
 	mcplib "github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
-	"github.com/virat-mankali/discord-cli/internal/config"
-	"github.com/virat-mankali/discord-cli/internal/discord"
-	"github.com/virat-mankali/discord-cli/internal/storage"
+	"github.com/langkurt/discord-cli/internal/config"
+	"github.com/langkurt/discord-cli/internal/discord"
+	"github.com/langkurt/discord-cli/internal/storage"
 )
 
 // RegisterTools adds all discocli MCP tools to the server.

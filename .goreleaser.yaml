@@ -21,9 +21,9 @@ builds:
       - arm64
     ldflags:
       - -s -w
-      - -X github.com/virat-mankali/discord-cli/cmd/discocli/commands.version={{.Version}}
-      - -X github.com/virat-mankali/discord-cli/cmd/discocli/commands.commit={{.Commit}}
-      - -X github.com/virat-mankali/discord-cli/cmd/discocli/commands.date={{.Date}}
+      - -X github.com/langkurt/discord-cli/cmd/discocli/commands.version={{.Version}}
+      - -X github.com/langkurt/discord-cli/cmd/discocli/commands.commit={{.Commit}}
+      - -X github.com/langkurt/discord-cli/cmd/discocli/commands.date={{.Date}}
 
 archives:
   - id: default
@@ -51,11 +51,11 @@ changelog:
 
 brews:
   - repository:
-      owner: virat-mankali
+      owner: langkurt
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
     directory: Formula
-    homepage: "https://github.com/virat-mankali/discord-cli"
+    homepage: "https://github.com/langkurt/discord-cli"
     description: "Discord CLI — sync, search, send from your terminal. MCP-ready for AI agents."
     license: "MIT"
     install: |

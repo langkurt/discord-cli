@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/virat-mankali/discord-cli/internal/storage"
+	"github.com/langkurt/discord-cli/internal/storage"
 )
 
 // FetchLinksOptions configures a fetch-links run.

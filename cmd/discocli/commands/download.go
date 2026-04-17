@@ -7,9 +7,9 @@ import (
 
 	"github.com/briandowns/spinner"
 	"github.com/spf13/cobra"
-	"github.com/virat-mankali/discord-cli/internal/config"
-	"github.com/virat-mankali/discord-cli/internal/discord"
-	"github.com/virat-mankali/discord-cli/internal/storage"
+	"github.com/langkurt/discord-cli/internal/config"
+	"github.com/langkurt/discord-cli/internal/discord"
+	"github.com/langkurt/discord-cli/internal/storage"
 	"time"
 )
 

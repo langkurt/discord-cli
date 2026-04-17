@@ -4,8 +4,8 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
-	"github.com/virat-mankali/discord-cli/internal/config"
-	"github.com/virat-mankali/discord-cli/internal/storage"
+	"github.com/langkurt/discord-cli/internal/config"
+	"github.com/langkurt/discord-cli/internal/storage"
 )
 
 var (

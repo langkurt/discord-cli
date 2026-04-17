@@ -1,6 +1,6 @@
 package main
 
-import "github.com/virat-mankali/discord-cli/cmd/discocli/commands"
+import "github.com/langkurt/discord-cli/cmd/discocli/commands"
 
 func main() {
 	commands.Execute()

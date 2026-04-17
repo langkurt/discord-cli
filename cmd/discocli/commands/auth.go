@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/virat-mankali/discord-cli/internal/config"
-	"github.com/virat-mankali/discord-cli/internal/discord"
+	"github.com/langkurt/discord-cli/internal/config"
+	"github.com/langkurt/discord-cli/internal/discord"
 )
 
 var authCmd = &cobra.Command{

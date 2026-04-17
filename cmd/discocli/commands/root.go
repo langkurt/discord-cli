@@ -5,7 +5,7 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	"github.com/virat-mankali/discord-cli/internal/config"
+	"github.com/langkurt/discord-cli/internal/config"
 )
 
 var (
