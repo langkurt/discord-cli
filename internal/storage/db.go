@@ -118,6 +118,22 @@ func (db *DB) migrate() error {
 		`ALTER TABLE channels ADD COLUMN parent_id TEXT`,
 		`ALTER TABLE messages ADD COLUMN reaction_count INTEGER NOT NULL DEFAULT 0`,
 		`CREATE INDEX IF NOT EXISTS idx_messages_reactions ON messages(reaction_count DESC)`,
+		// Links table — external URLs found in message content
+		`CREATE TABLE IF NOT EXISTS links (
+			id          TEXT PRIMARY KEY,
+			message_id  TEXT NOT NULL REFERENCES messages(id),
+			channel_id  TEXT NOT NULL,
+			url         TEXT NOT NULL,
+			local_path  TEXT,
+			failed      INTEGER NOT NULL DEFAULT 0,
+			fail_reason TEXT
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_links_channel    ON links(channel_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_links_local_path ON links(local_path)`,
+		`CREATE INDEX IF NOT EXISTS idx_links_failed     ON links(failed)`,
+		// proxy_url: Discord's own CDN proxy (media.discordapp.net) — embed images captured during sync.
+		// When set, we download from this URL directly instead of scraping og:image.
+		`ALTER TABLE links ADD COLUMN proxy_url TEXT`,
 	}
 
 	for _, stmt := range stmts {
