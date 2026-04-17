@@ -3,7 +3,6 @@ package commands
 import (
 	"fmt"
 
-	"github.com/bwmarrin/discordgo"
 	"github.com/spf13/cobra"
 	"github.com/virat-mankali/discord-cli/internal/config"
 	"github.com/virat-mankali/discord-cli/internal/discord"
@@ -47,12 +46,14 @@ var channelsCmd = &cobra.Command{
 
 		count := 0
 		for _, c := range channels {
-			if c.Type == discordgo.ChannelTypeGuildText {
-				fmt.Printf("  %s  #%s\n", c.ID, c.Name)
-				count++
+			if !discord.IsSyncableChannel(c.Type) && !discord.IsThreadContainer(c.Type) {
+				continue
 			}
+			label := discord.ChannelTypeLabel(c.Type)
+			fmt.Printf("  %s  #%-30s  [%s]\n", c.ID, c.Name, label)
+			count++
 		}
-		fmt.Printf("\n%d text channel(s)\n", count)
+		fmt.Printf("\n%d syncable channel(s)\n", count)
 		return nil
 	},
 }

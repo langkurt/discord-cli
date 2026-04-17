@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	_ "modernc.org/sqlite"
 )
@@ -48,11 +49,12 @@ func (db *DB) migrate() error {
 			icon TEXT
 		)`,
 		`CREATE TABLE IF NOT EXISTS channels (
-			id       TEXT PRIMARY KEY,
-			guild_id TEXT REFERENCES guilds(id),
-			name     TEXT NOT NULL,
-			type     INTEGER NOT NULL DEFAULT 0,
-			topic    TEXT
+			id        TEXT PRIMARY KEY,
+			guild_id  TEXT REFERENCES guilds(id),
+			name      TEXT NOT NULL,
+			type      INTEGER NOT NULL DEFAULT 0,
+			topic     TEXT,
+			parent_id TEXT
 		)`,
 		`CREATE TABLE IF NOT EXISTS messages (
 			id          TEXT PRIMARY KEY,
@@ -112,10 +114,19 @@ func (db *DB) migrate() error {
 		`CREATE INDEX IF NOT EXISTS idx_attachments_message    ON attachments(message_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_attachments_channel    ON attachments(channel_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_attachments_local_path ON attachments(local_path)`,
+		// Additive migrations for existing databases
+		`ALTER TABLE channels ADD COLUMN parent_id TEXT`,
 	}
 
 	for _, stmt := range stmts {
-		if _, err := db.conn.Exec(stmt); err != nil {
+		_, err := db.conn.Exec(stmt)
+		if err != nil {
+			// ALTER TABLE ADD COLUMN fails on fresh DBs where the column already exists
+			// from the CREATE TABLE statement — that's fine, skip it.
+			if strings.HasPrefix(strings.TrimSpace(strings.ToUpper(stmt)), "ALTER TABLE") &&
+				strings.Contains(err.Error(), "duplicate column name") {
+				continue
+			}
 			return fmt.Errorf("migration statement failed: %w\nSQL: %s", err, stmt)
 		}
 	}

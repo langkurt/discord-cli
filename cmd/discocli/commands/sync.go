@@ -146,15 +146,28 @@ func resolveTargetChannels(session *discordgo.Session, db *storage.DB) ([]string
 			continue
 		}
 		for _, ch := range channels {
-			if ch.Type != discordgo.ChannelTypeGuildText {
-				continue
-			}
 			// Filter by channel name if specified
 			if syncChannel != "" && ch.Name != syncChannel {
 				continue
 			}
-			_ = db.UpsertChannel(ch.ID, gID, ch.Name, int(ch.Type), ch.Topic)
-			channelIDs = append(channelIDs, ch.ID)
+
+			switch {
+			case discord.IsSyncableChannel(ch.Type):
+				_ = db.UpsertChannel(ch.ID, gID, ch.Name, int(ch.Type), ch.Topic, "")
+				channelIDs = append(channelIDs, ch.ID)
+
+			case discord.IsThreadContainer(ch.Type):
+				_ = db.UpsertChannel(ch.ID, gID, ch.Name, int(ch.Type), ch.Topic, "")
+				threads, err := discord.FetchThreads(session, ch.ID)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "warning: failed to fetch threads for %s (#%s): %v\n", ch.ID, ch.Name, err)
+					continue
+				}
+				for _, t := range threads {
+					_ = db.UpsertChannel(t.ID, gID, t.Name, int(t.Type), "", ch.ID)
+					channelIDs = append(channelIDs, t.ID)
+				}
+			}
 		}
 	}
 	return channelIDs, nil

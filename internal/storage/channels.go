@@ -14,14 +14,21 @@ func (db *DB) UpsertGuild(id, name, icon string) error {
 }
 
 // UpsertChannel inserts or replaces a channel record.
-func (db *DB) UpsertChannel(id, guildID, name string, chType int, topic string) error {
+func (db *DB) UpsertChannel(id, guildID, name string, chType int, topic, parentID string) error {
 	_, err := db.conn.Exec(`
-		INSERT OR REPLACE INTO channels (id, guild_id, name, type, topic) VALUES (?, ?, ?, ?, ?)
-	`, id, guildID, name, chType, topic)
+		INSERT OR REPLACE INTO channels (id, guild_id, name, type, topic, parent_id) VALUES (?, ?, ?, ?, ?, ?)
+	`, id, guildID, name, chType, topic, nullableStr(parentID))
 	if err != nil {
 		return fmt.Errorf("upsert channel %s: %w", id, err)
 	}
 	return nil
+}
+
+func nullableStr(s string) interface{} {
+	if s == "" {
+		return nil
+	}
+	return s
 }
 
 // GetChannelName returns the name of a channel by ID.

@@ -113,15 +113,15 @@ func (db *DB) AttachmentStats(channelID string) (pending, downloaded int, err er
 	if channelID == "" {
 		row = db.conn.QueryRow(`
 			SELECT
-				SUM(CASE WHEN local_path IS NULL THEN 1 ELSE 0 END),
-				SUM(CASE WHEN local_path IS NOT NULL THEN 1 ELSE 0 END)
+				COALESCE(SUM(CASE WHEN local_path IS NULL THEN 1 ELSE 0 END), 0),
+				COALESCE(SUM(CASE WHEN local_path IS NOT NULL THEN 1 ELSE 0 END), 0)
 			FROM attachments
 		`)
 	} else {
 		row = db.conn.QueryRow(`
 			SELECT
-				SUM(CASE WHEN local_path IS NULL THEN 1 ELSE 0 END),
-				SUM(CASE WHEN local_path IS NOT NULL THEN 1 ELSE 0 END)
+				COALESCE(SUM(CASE WHEN local_path IS NULL THEN 1 ELSE 0 END), 0),
+				COALESCE(SUM(CASE WHEN local_path IS NOT NULL THEN 1 ELSE 0 END), 0)
 			FROM attachments WHERE channel_id = ?
 		`, channelID)
 	}

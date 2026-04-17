@@ -250,7 +250,7 @@ func registerSyncChannel(s *server.MCPServer, storeDir string) {
 		if guildID != "" {
 			ch, chErr := session.Channel(channelID)
 			if chErr == nil {
-				_ = db.UpsertChannel(ch.ID, guildID, ch.Name, int(ch.Type), ch.Topic)
+				_ = db.UpsertChannel(ch.ID, guildID, ch.Name, int(ch.Type), ch.Topic, ch.ParentID)
 			}
 			guild, gErr := session.Guild(guildID)
 			if gErr == nil {

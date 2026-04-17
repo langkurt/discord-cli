@@ -8,6 +8,7 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
+
 // NewSession creates an authenticated discordgo session.
 func NewSession(token *StoredToken) (*discordgo.Session, error) {
 	s, err := discordgo.New(token.FormatToken())
@@ -94,6 +95,81 @@ func isRateLimit(err error) bool {
 	}
 	restErr, ok := err.(*discordgo.RESTError)
 	return ok && restErr.Response != nil && restErr.Response.StatusCode == 429
+}
+
+// FetchThreads returns all active and archived public threads for a forum/media channel.
+func FetchThreads(s *discordgo.Session, channelID string) ([]*discordgo.Channel, error) {
+	active, err := s.ThreadsActive(channelID)
+	if err != nil {
+		return nil, fmt.Errorf("fetch active threads for %s: %w", channelID, err)
+	}
+
+	threads := make([]*discordgo.Channel, 0, len(active.Threads))
+	threads = append(threads, active.Threads...)
+
+	// Paginate archived threads until exhausted; before=nil starts from most recent
+	var before *time.Time
+	for {
+		archived, err := s.ThreadsArchived(channelID, before, 100)
+		if err != nil {
+			return nil, fmt.Errorf("fetch archived threads for %s: %w", channelID, err)
+		}
+		threads = append(threads, archived.Threads...)
+		if !archived.HasMore || len(archived.Threads) == 0 {
+			break
+		}
+		// Use the archive timestamp of the last thread as the next cursor
+		last := archived.Threads[len(archived.Threads)-1]
+		if last.ThreadMetadata != nil && !last.ThreadMetadata.ArchiveTimestamp.IsZero() {
+			t := last.ThreadMetadata.ArchiveTimestamp
+			before = &t
+		} else {
+			break
+		}
+	}
+
+	return threads, nil
+}
+
+// IsSyncableChannel reports whether a channel type carries messages directly.
+func IsSyncableChannel(t discordgo.ChannelType) bool {
+	switch t {
+	case discordgo.ChannelTypeGuildText,
+		discordgo.ChannelTypeGuildVoice,
+		discordgo.ChannelTypeGuildNews,
+		discordgo.ChannelTypeGuildNewsThread,
+		discordgo.ChannelTypeGuildPublicThread,
+		discordgo.ChannelTypeGuildPrivateThread:
+		return true
+	}
+	return false
+}
+
+// IsThreadContainer reports whether a channel type holds threads (forum/media).
+func IsThreadContainer(t discordgo.ChannelType) bool {
+	return t == discordgo.ChannelTypeGuildForum || t == discordgo.ChannelTypeGuildMedia
+}
+
+// ChannelTypeLabel returns a short display label for a channel type.
+func ChannelTypeLabel(t discordgo.ChannelType) string {
+	switch t {
+	case discordgo.ChannelTypeGuildText:
+		return "text"
+	case discordgo.ChannelTypeGuildVoice:
+		return "voice"
+	case discordgo.ChannelTypeGuildNews:
+		return "announcement"
+	case discordgo.ChannelTypeGuildForum:
+		return "forum"
+	case discordgo.ChannelTypeGuildMedia:
+		return "media"
+	case discordgo.ChannelTypeGuildNewsThread,
+		discordgo.ChannelTypeGuildPublicThread,
+		discordgo.ChannelTypeGuildPrivateThread:
+		return "thread"
+	default:
+		return "unknown"
+	}
 }
 
 // ResolveChannelByName finds a text channel by name within a guild.
