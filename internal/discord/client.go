@@ -2,6 +2,7 @@ package discord
 
 import (
 	"fmt"
+	"math/rand"
 	"time"
 
 	"github.com/bwmarrin/discordgo"
@@ -25,11 +26,30 @@ func NewSession(token *StoredToken) (*discordgo.Session, error) {
 // Pass beforeID to start from a specific point (for resumable sync).
 // Calls onBatch for each batch of up to 100 messages.
 func FetchMessages(s *discordgo.Session, channelID string, onBatch func([]*discordgo.Message) error, beforeID string) error {
+	const (
+		baseDelay  = 400 * time.Millisecond // minimum wait between batches
+		jitter     = 300 * time.Millisecond // random extra 0–300ms on top
+		backoffMax = 10 * time.Second       // cap for 429 back-off
+	)
+	backoff := 2 * time.Second // starting back-off on rate limit hit
+
 	for {
 		msgs, err := s.ChannelMessages(channelID, 100, beforeID, "", "")
 		if err != nil {
+			// discordgo surfaces 429s as errors — back off and retry once
+			if isRateLimit(err) {
+				time.Sleep(backoff)
+				backoff *= 2
+				if backoff > backoffMax {
+					backoff = backoffMax
+				}
+				continue
+			}
 			return fmt.Errorf("failed to fetch messages: %w", err)
 		}
+		// Successful fetch — reset back-off
+		backoff = 2 * time.Second
+
 		if len(msgs) == 0 {
 			break
 		}
@@ -37,9 +57,21 @@ func FetchMessages(s *discordgo.Session, channelID string, onBatch func([]*disco
 			return err
 		}
 		beforeID = msgs[len(msgs)-1].ID
-		time.Sleep(500 * time.Millisecond) // respect rate limits
+
+		// Jittered delay: 400ms base + random 0–300ms
+		sleep := baseDelay + time.Duration(rand.Int63n(int64(jitter)))
+		time.Sleep(sleep)
 	}
 	return nil
+}
+
+// isRateLimit checks if a discordgo error is an HTTP 429.
+func isRateLimit(err error) bool {
+	if err == nil {
+		return false
+	}
+	restErr, ok := err.(*discordgo.RESTError)
+	return ok && restErr.Response != nil && restErr.Response.StatusCode == 429
 }
 
 // ResolveChannelByName finds a text channel by name within a guild.
