@@ -92,10 +92,19 @@ func performHistoricalSync(session *discordgo.Session, db *storage.DB, stopBefor
 
 	totalCount := 0
 	for _, chID := range channelIDs {
+		chName, _ := db.GetChannelName(chID)
+		if chName == "" {
+			chName = chID
+		}
+		start := time.Now()
 		count, err := syncChannelHistory(session, db, chID, stopBefore)
+		elapsed := time.Since(start).Round(time.Second)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "warning: failed to sync channel %s: %v\n", chID, err)
+			fmt.Fprintf(os.Stderr, "warning: failed to sync channel %s: %v\n", chName, err)
 			continue
+		}
+		if count > 0 {
+			fmt.Printf("  #%-40s %5d msgs  %s\n", chName, count, elapsed)
 		}
 		totalCount += count
 	}
