@@ -20,6 +20,7 @@ var (
 	syncGuild   string
 	syncChannel string
 	syncFollow  bool
+	syncSince   string
 )
 
 var syncCmd = &cobra.Command{
@@ -54,11 +55,20 @@ Use --follow to keep running and capture new messages in real-time.`,
 			return runGatewaySync(session, db)
 		}
 
+		var stopBefore string
+		if syncSince != "" {
+			t, err := discord.ParseSince(syncSince)
+			if err != nil {
+				return err
+			}
+			stopBefore = discord.TimeToSnowflake(t)
+		}
+
 		s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
 		s.Suffix = " Syncing messages..."
 		s.Start()
 
-		count, err := performHistoricalSync(session, db)
+		count, err := performHistoricalSync(session, db, stopBefore)
 		s.Stop()
 
 		if err != nil {
@@ -73,7 +83,7 @@ Use --follow to keep running and capture new messages in real-time.`,
 	},
 }
 
-func performHistoricalSync(session *discordgo.Session, db *storage.DB) (int, error) {
+func performHistoricalSync(session *discordgo.Session, db *storage.DB, stopBefore string) (int, error) {
 	// Resolve which channels to sync
 	channelIDs, err := resolveTargetChannels(session, db)
 	if err != nil {
@@ -82,7 +92,7 @@ func performHistoricalSync(session *discordgo.Session, db *storage.DB) (int, err
 
 	totalCount := 0
 	for _, chID := range channelIDs {
-		count, err := syncChannelHistory(session, db, chID)
+		count, err := syncChannelHistory(session, db, chID, stopBefore)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "warning: failed to sync channel %s: %v\n", chID, err)
 			continue
@@ -150,7 +160,7 @@ func resolveTargetChannels(session *discordgo.Session, db *storage.DB) ([]string
 	return channelIDs, nil
 }
 
-func syncChannelHistory(session *discordgo.Session, db *storage.DB, channelID string) (int, error) {
+func syncChannelHistory(session *discordgo.Session, db *storage.DB, channelID, stopBefore string) (int, error) {
 	// Load existing sync state for incremental sync
 	state, err := db.GetSyncState(channelID)
 	if err != nil {
@@ -202,7 +212,7 @@ func syncChannelHistory(session *discordgo.Session, db *storage.DB, channelID st
 			count++
 		}
 		return nil
-	}, beforeID)
+	}, beforeID, stopBefore)
 	if err != nil {
 		return count, err
 	}
@@ -274,5 +284,6 @@ func init() {
 	syncCmd.Flags().StringVar(&syncGuild, "guild", "", "Guild (server) name or ID to sync")
 	syncCmd.Flags().StringVar(&syncChannel, "channel", "", "Channel name or ID to sync")
 	syncCmd.Flags().BoolVar(&syncFollow, "follow", false, "Keep running and sync new messages in real-time")
+	syncCmd.Flags().StringVar(&syncSince, "since", "", "Only sync messages on/after this date (e.g. 30d, 6m, 1y, 2026-01-01)")
 	rootCmd.AddCommand(syncCmd)
 }

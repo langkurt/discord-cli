@@ -212,6 +212,9 @@ func registerSyncChannel(s *server.MCPServer, storeDir string) {
 		mcplib.WithString("guild_id",
 			mcplib.Description("Guild ID the channel belongs to (helps store metadata)"),
 		),
+		mcplib.WithString("since",
+			mcplib.Description("Only sync messages on/after this date (e.g. 30d, 6m, 1y, 2026-01-01)"),
+		),
 	)
 
 	s.AddTool(tool, func(ctx context.Context, req mcplib.CallToolRequest) (*mcplib.CallToolResult, error) {
@@ -220,6 +223,16 @@ func registerSyncChannel(s *server.MCPServer, storeDir string) {
 			return mcplib.NewToolResultError(err.Error()), nil
 		}
 		guildID := req.GetString("guild_id", "")
+		sinceStr := req.GetString("since", "")
+
+		var stopBefore string
+		if sinceStr != "" {
+			t, err := discord.ParseSince(sinceStr)
+			if err != nil {
+				return mcplib.NewToolResultError(fmt.Sprintf("invalid since: %v", err)), nil
+			}
+			stopBefore = discord.TimeToSnowflake(t)
+		}
 
 		session, cleanup, err := newSession(storeDir)
 		if err != nil {
@@ -274,7 +287,7 @@ func registerSyncChannel(s *server.MCPServer, storeDir string) {
 				count++
 			}
 			return nil
-		}, beforeID)
+		}, beforeID, stopBefore)
 		if err != nil {
 			return mcplib.NewToolResultError(fmt.Sprintf("sync failed: %v", err)), nil
 		}
@@ -348,6 +361,9 @@ func registerDownloadAttachments(s *server.MCPServer, storeDir string) {
 		mcplib.WithString("out_dir",
 			mcplib.Description("Output directory (default: ~/.discocli/media)"),
 		),
+		mcplib.WithString("since",
+			mcplib.Description("Only download attachments from messages on/after this date (e.g. 30d, 6m, 1y, 2026-01-01)"),
+		),
 	)
 
 	s.AddTool(tool, func(ctx context.Context, req mcplib.CallToolRequest) (*mcplib.CallToolResult, error) {
@@ -356,6 +372,7 @@ func registerDownloadAttachments(s *server.MCPServer, storeDir string) {
 		mediaType := req.GetString("media_type", "all")
 		limit := int(req.GetFloat("limit", 0))
 		outDir := req.GetString("out_dir", "~/.discocli/media")
+		sinceStr := req.GetString("since", "")
 
 		// Expand ~
 		if len(outDir) >= 2 && outDir[:2] == "~/" {
@@ -393,6 +410,14 @@ func registerDownloadAttachments(s *server.MCPServer, storeDir string) {
 			Limit:       limit,
 			GuildName:   guildName,
 			ChannelName: channelName,
+		}
+
+		if sinceStr != "" {
+			t, err := discord.ParseSince(sinceStr)
+			if err != nil {
+				return mcplib.NewToolResultError(fmt.Sprintf("invalid since: %v", err)), nil
+			}
+			opts.Since = t
 		}
 
 		result, err := discord.DownloadAttachments(db, opts, nil)

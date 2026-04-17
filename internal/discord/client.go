@@ -24,8 +24,10 @@ func NewSession(token *StoredToken) (*discordgo.Session, error) {
 
 // FetchMessages paginates through messages in a channel oldest-first.
 // Pass beforeID to start from a specific point (for resumable sync).
+// Pass stopBefore (a snowflake ID string) to stop when messages older than
+// the cutoff are reached — use TimeToSnowflake to convert a time.Time.
 // Calls onBatch for each batch of up to 100 messages.
-func FetchMessages(s *discordgo.Session, channelID string, onBatch func([]*discordgo.Message) error, beforeID string) error {
+func FetchMessages(s *discordgo.Session, channelID string, onBatch func([]*discordgo.Message) error, beforeID, stopBefore string) error {
 	const (
 		baseDelay  = 400 * time.Millisecond // minimum wait between batches
 		jitter     = 300 * time.Millisecond // random extra 0–300ms on top
@@ -53,10 +55,30 @@ func FetchMessages(s *discordgo.Session, channelID string, onBatch func([]*disco
 		if len(msgs) == 0 {
 			break
 		}
-		if err := onBatch(msgs); err != nil {
-			return err
+
+		// Apply cutoff: msgs are newest-first; once we cross stopBefore,
+		// all subsequent messages are older, so trim and stop.
+		reachedCutoff := false
+		if stopBefore != "" {
+			for i, m := range msgs {
+				if m.ID < stopBefore {
+					msgs = msgs[:i]
+					reachedCutoff = true
+					break
+				}
+			}
 		}
-		beforeID = msgs[len(msgs)-1].ID
+
+		if len(msgs) > 0 {
+			if err := onBatch(msgs); err != nil {
+				return err
+			}
+			beforeID = msgs[len(msgs)-1].ID
+		}
+
+		if reachedCutoff {
+			break
+		}
 
 		// Jittered delay: 400ms base + random 0–300ms
 		sleep := baseDelay + time.Duration(rand.Int63n(int64(jitter)))

@@ -19,6 +19,7 @@ var (
 	dlType    string
 	dlOut     string
 	dlLimit   int
+	dlSince   string
 )
 
 var downloadCmd = &cobra.Command{
@@ -122,6 +123,14 @@ Examples:
 			ChannelName: channelName,
 		}
 
+		if dlSince != "" {
+			t, err := discord.ParseSince(dlSince)
+			if err != nil {
+				return err
+			}
+			opts.Since = t
+		}
+
 		s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
 		s.Suffix = " Downloading..."
 		s.Start()
@@ -151,5 +160,6 @@ func init() {
 	downloadCmd.Flags().StringVar(&dlType, "type", "all", "Media type: image, gif, video, all")
 	downloadCmd.Flags().StringVar(&dlOut, "out", "~/.discocli/media", "Output directory")
 	downloadCmd.Flags().IntVar(&dlLimit, "limit", 0, "Max files to download (0 = unlimited)")
+	downloadCmd.Flags().StringVar(&dlSince, "since", "", "Only download attachments from messages on/after this date (e.g. 30d, 6m, 1y, 2026-01-01)")
 	rootCmd.AddCommand(downloadCmd)
 }

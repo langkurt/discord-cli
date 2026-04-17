@@ -3,6 +3,7 @@ package storage
 import (
 	"database/sql"
 	"fmt"
+	"time"
 )
 
 // Attachment represents a file attached to a Discord message.
@@ -33,7 +34,8 @@ func (db *DB) UpsertAttachment(id, messageID, channelID, url, filename, contentT
 // mediaType: "image" (non-gif), "gif", "video", "all"
 // channelID / guildID: pass "" to skip filter.
 // limit: 0 = unlimited.
-func (db *DB) ListPendingAttachments(channelID, guildID, mediaType string, limit int) ([]Attachment, error) {
+// since: zero value = no filter; otherwise only attachments from messages on/after this time.
+func (db *DB) ListPendingAttachments(channelID, guildID, mediaType string, limit int, since time.Time) ([]Attachment, error) {
 	query := `
 		SELECT a.id, a.message_id, a.channel_id, a.url, a.filename,
 		       COALESCE(a.content_type,''), a.size
@@ -49,10 +51,19 @@ func (db *DB) ListPendingAttachments(channelID, guildID, mediaType string, limit
 		args = append(args, channelID)
 	}
 
-	if guildID != "" {
+	needsMessageJoin := guildID != "" || !since.IsZero()
+	if needsMessageJoin {
 		query += " JOIN messages m ON a.message_id = m.id"
+	}
+
+	if guildID != "" {
 		where = append(where, "m.guild_id = ?")
 		args = append(args, guildID)
+	}
+
+	if !since.IsZero() {
+		where = append(where, "m.timestamp >= ?")
+		args = append(args, since.UTC().Format(time.RFC3339))
 	}
 
 	switch mediaType {
