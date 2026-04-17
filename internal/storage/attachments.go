@@ -35,7 +35,8 @@ func (db *DB) UpsertAttachment(id, messageID, channelID, url, filename, contentT
 // channelID / guildID: pass "" to skip filter.
 // limit: 0 = unlimited.
 // since: zero value = no filter; otherwise only attachments from messages on/after this time.
-func (db *DB) ListPendingAttachments(channelID, guildID, mediaType string, limit int, since time.Time) ([]Attachment, error) {
+// minReactions: 0 = no filter; otherwise only attachments from messages with >= minReactions.
+func (db *DB) ListPendingAttachments(channelID, guildID, mediaType string, limit int, since time.Time, minReactions int) ([]Attachment, error) {
 	query := `
 		SELECT a.id, a.message_id, a.channel_id, a.url, a.filename,
 		       COALESCE(a.content_type,''), a.size
@@ -51,7 +52,7 @@ func (db *DB) ListPendingAttachments(channelID, guildID, mediaType string, limit
 		args = append(args, channelID)
 	}
 
-	needsMessageJoin := guildID != "" || !since.IsZero()
+	needsMessageJoin := guildID != "" || !since.IsZero() || minReactions > 0
 	if needsMessageJoin {
 		query += " JOIN messages m ON a.message_id = m.id"
 	}
@@ -64,6 +65,11 @@ func (db *DB) ListPendingAttachments(channelID, guildID, mediaType string, limit
 	if !since.IsZero() {
 		where = append(where, "m.timestamp >= ?")
 		args = append(args, since.UTC().Format(time.RFC3339))
+	}
+
+	if minReactions > 0 {
+		where = append(where, "m.reaction_count >= ?")
+		args = append(args, minReactions)
 	}
 
 	switch mediaType {

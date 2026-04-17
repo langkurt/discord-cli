@@ -17,8 +17,9 @@ type DownloadOptions struct {
 	GuildID   string // filter by guild ID (optional)
 	MediaType string // "image", "gif", "video", "all"
 	OutDir    string // destination root directory
-	Limit     int    // 0 = unlimited
-	Since     time.Time // zero = no filter; only attachments from messages on/after this time
+	Limit        int       // 0 = unlimited
+	Since        time.Time // zero = no filter; only attachments from messages on/after this time
+	MinReactions int       // 0 = no filter; only attachments from messages with >= this many reactions
 	// GuildName / ChannelName for folder organisation — fetched by caller
 	GuildName   string
 	ChannelName string
@@ -37,7 +38,7 @@ type ProgressFunc func(index, total int, filename string)
 
 // DownloadAttachments fetches pending attachments and saves them to disk.
 func DownloadAttachments(db *storage.DB, opts DownloadOptions, progress ProgressFunc) (DownloadResult, error) {
-	pending, err := db.ListPendingAttachments(opts.ChannelID, opts.GuildID, opts.MediaType, opts.Limit, opts.Since)
+	pending, err := db.ListPendingAttachments(opts.ChannelID, opts.GuildID, opts.MediaType, opts.Limit, opts.Since, opts.MinReactions)
 	if err != nil {
 		return DownloadResult{}, fmt.Errorf("listing attachments: %w", err)
 	}

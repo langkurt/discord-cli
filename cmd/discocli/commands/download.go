@@ -14,12 +14,13 @@ import (
 )
 
 var (
-	dlGuild   string
-	dlChannel string
-	dlType    string
-	dlOut     string
-	dlLimit   int
-	dlSince   string
+	dlGuild        string
+	dlChannel      string
+	dlType         string
+	dlOut          string
+	dlLimit        int
+	dlSince        string
+	dlMinReactions int
 )
 
 var downloadCmd = &cobra.Command{
@@ -35,7 +36,8 @@ Examples:
   discocli download --type gif                   # only GIFs
   discocli download --type image                 # images (not GIFs)
   discocli download --guild "My Server" --channel "memes" --type gif --limit 50
-  discocli download --out ~/Desktop/discord-media`,
+  discocli download --out ~/Desktop/discord-media
+  discocli download --channel "🎨ai-art" --min-reactions 3 --since 30d`,
 
 	RunE: func(cmd *cobra.Command, args []string) error {
 		store := resolvedStore()
@@ -114,13 +116,14 @@ Examples:
 		}
 
 		opts := discord.DownloadOptions{
-			ChannelID:   channelID,
-			GuildID:     guildID,
-			MediaType:   dlType,
-			OutDir:      outDir,
-			Limit:       dlLimit,
-			GuildName:   guildName,
-			ChannelName: channelName,
+			ChannelID:    channelID,
+			GuildID:      guildID,
+			MediaType:    dlType,
+			OutDir:       outDir,
+			Limit:        dlLimit,
+			GuildName:    guildName,
+			ChannelName:  channelName,
+			MinReactions: dlMinReactions,
 		}
 
 		if dlSince != "" {
@@ -161,5 +164,6 @@ func init() {
 	downloadCmd.Flags().StringVar(&dlOut, "out", "~/.discocli/media", "Output directory")
 	downloadCmd.Flags().IntVar(&dlLimit, "limit", 0, "Max files to download (0 = unlimited)")
 	downloadCmd.Flags().StringVar(&dlSince, "since", "", "Only download attachments from messages on/after this date (e.g. 30d, 6m, 1y, 2026-01-01)")
+	downloadCmd.Flags().IntVar(&dlMinReactions, "min-reactions", 0, "Only download from messages with at least this many reactions (0 = no filter)")
 	rootCmd.AddCommand(downloadCmd)
 }
