@@ -225,12 +225,18 @@ func syncChannelHistory(session *discordgo.Session, db *storage.DB, channelID st
 }
 
 func upsertMsg(db *storage.DB, m *discordgo.Message) error {
-	return db.UpsertMessage(
+	if err := db.UpsertMessage(
 		m.ID, m.ChannelID, m.GuildID,
 		m.Author.ID, m.Author.Username,
 		m.Content, m.Timestamp,
 		m.EditedTimestamp != nil && !m.EditedTimestamp.IsZero(),
-	)
+	); err != nil {
+		return err
+	}
+	for _, a := range m.Attachments {
+		_ = db.UpsertAttachment(a.ID, m.ID, m.ChannelID, a.URL, a.Filename, a.ContentType, int64(a.Size))
+	}
+	return nil
 }
 
 func runGatewaySync(session *discordgo.Session, db *storage.DB) error {

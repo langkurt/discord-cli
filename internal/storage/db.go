@@ -98,6 +98,20 @@ func (db *DB) migrate() error {
 		`CREATE INDEX IF NOT EXISTS idx_messages_channel ON messages(channel_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp DESC)`,
 		`CREATE INDEX IF NOT EXISTS idx_messages_author ON messages(author_id)`,
+		// Attachments table — stores file/image/gif/video metadata from messages
+		`CREATE TABLE IF NOT EXISTS attachments (
+			id            TEXT PRIMARY KEY,
+			message_id    TEXT NOT NULL REFERENCES messages(id),
+			channel_id    TEXT NOT NULL,
+			url           TEXT NOT NULL,
+			filename      TEXT NOT NULL,
+			content_type  TEXT,
+			size          INTEGER,
+			local_path    TEXT
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_attachments_message    ON attachments(message_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_attachments_channel    ON attachments(channel_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_attachments_local_path ON attachments(local_path)`,
 	}
 
 	for _, stmt := range stmts {

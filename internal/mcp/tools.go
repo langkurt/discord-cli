@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/bwmarrin/discordgo"
@@ -21,6 +22,7 @@ func RegisterTools(s *server.MCPServer, storeDir string) {
 	registerListChannels(s, storeDir)
 	registerSyncChannel(s, storeDir)
 	registerGetSyncStatus(s, storeDir)
+	registerDownloadAttachments(s, storeDir)
 }
 
 // ── search_messages ──────────────────────────────────────────────────────────
@@ -323,6 +325,85 @@ func registerGetSyncStatus(s *server.MCPServer, storeDir string) {
 			}
 		}
 		return mcplib.NewToolResultText(sb.String()), nil
+	})
+}
+
+// ── download_attachments ─────────────────────────────────────────────────────
+
+func registerDownloadAttachments(s *server.MCPServer, storeDir string) {
+	tool := mcplib.NewTool("download_attachments",
+		mcplib.WithDescription("Download media attachments (images, GIFs, videos) from synced Discord messages to local disk."),
+		mcplib.WithString("channel",
+			mcplib.Description("Filter by channel name (optional)"),
+		),
+		mcplib.WithString("guild",
+			mcplib.Description("Filter by server/guild name (optional)"),
+		),
+		mcplib.WithString("media_type",
+			mcplib.Description("Media type to download: image, gif, video, all (default: all)"),
+		),
+		mcplib.WithNumber("limit",
+			mcplib.Description("Max number of files to download (0 = unlimited)"),
+		),
+		mcplib.WithString("out_dir",
+			mcplib.Description("Output directory (default: ~/.discocli/media)"),
+		),
+	)
+
+	s.AddTool(tool, func(ctx context.Context, req mcplib.CallToolRequest) (*mcplib.CallToolResult, error) {
+		channel := req.GetString("channel", "")
+		guild := req.GetString("guild", "")
+		mediaType := req.GetString("media_type", "all")
+		limit := int(req.GetFloat("limit", 0))
+		outDir := req.GetString("out_dir", "~/.discocli/media")
+
+		// Expand ~
+		if len(outDir) >= 2 && outDir[:2] == "~/" {
+			home, _ := os.UserHomeDir()
+			outDir = home + outDir[1:]
+		}
+
+		db, err := storage.Open(config.DBPath(storeDir))
+		if err != nil {
+			return mcplib.NewToolResultError(fmt.Sprintf("database error: %v", err)), nil
+		}
+		defer db.Close()
+
+		// Resolve channel name → ID
+		var channelID, channelName, guildName string
+		if channel != "" || guild != "" {
+			channels, err := db.ListSyncedChannels()
+			if err != nil {
+				return mcplib.NewToolResultError(fmt.Sprintf("error listing channels: %v", err)), nil
+			}
+			for _, ch := range channels {
+				if (channel == "" || ch.ChannelName == channel) && (guild == "" || ch.GuildName == guild) {
+					channelID = ch.ChannelID
+					channelName = ch.ChannelName
+					guildName = ch.GuildName
+					break
+				}
+			}
+		}
+
+		opts := discord.DownloadOptions{
+			ChannelID:   channelID,
+			MediaType:   mediaType,
+			OutDir:      outDir,
+			Limit:       limit,
+			GuildName:   guildName,
+			ChannelName: channelName,
+		}
+
+		result, err := discord.DownloadAttachments(db, opts, nil)
+		if err != nil {
+			return mcplib.NewToolResultError(fmt.Sprintf("download error: %v", err)), nil
+		}
+
+		return mcplib.NewToolResultText(fmt.Sprintf(
+			"Downloaded: %d  Failed: %d  Saved to: %s",
+			result.Downloaded, result.Failed, outDir,
+		)), nil
 	})
 }
 
