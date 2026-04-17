@@ -167,7 +167,7 @@ func resolveTargetChannels(session *discordgo.Session, db *storage.DB) ([]string
 
 			case discord.IsThreadContainer(ch.Type):
 				_ = db.UpsertChannel(ch.ID, gID, ch.Name, int(ch.Type), ch.Topic, "")
-				threads, err := discord.FetchThreads(session, ch.ID)
+				threads, err := discord.FetchThreads(session, ch.ID, gID)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "warning: failed to fetch threads for %s (#%s): %v\n", ch.ID, ch.Name, err)
 					continue

@@ -1,6 +1,7 @@
 package discord
 
 import (
+	"encoding/json"
 	"fmt"
 	"math/rand"
 	"time"
@@ -97,15 +98,78 @@ func isRateLimit(err error) bool {
 	return ok && restErr.Response != nil && restErr.Response.StatusCode == 429
 }
 
+// isUserTokenForbidden checks for HTTP 403 with Discord code 20002
+// ("Only bots can use this endpoint") — hit when a user token calls a bot-only API.
+func isUserTokenForbidden(err error) bool {
+	if err == nil {
+		return false
+	}
+	restErr, ok := err.(*discordgo.RESTError)
+	return ok && restErr.Response != nil && restErr.Response.StatusCode == 403
+}
+
+// threadSearchResponse is the shape of GET /channels/{id}/threads/search.
+// This endpoint works with user tokens and is what the Discord app itself uses.
+type threadSearchResponse struct {
+	Threads      []*discordgo.Channel `json:"threads"`
+	HasMore      bool                 `json:"has_more"`
+	TotalResults int                  `json:"total_results"`
+}
+
+// fetchActiveThreadsUserToken uses GET /channels/{id}/threads/search to list
+// active threads — the only active-threads endpoint available to user tokens.
+// It paginates via offset until has_more is false.
+func fetchActiveThreadsUserToken(s *discordgo.Session, channelID string) ([]*discordgo.Channel, error) {
+	var all []*discordgo.Channel
+	offset := 0
+	const pageSize = 25
+
+	for {
+		url := fmt.Sprintf(
+			"https://discord.com/api/v10/channels/%s/threads/search?limit=%d&sort_by=last_message_time&sort_order=desc&archived=false&offset=%d",
+			channelID, pageSize, offset,
+		)
+		body, err := s.RequestWithBucketID("GET", url, nil, "threads/search")
+		if err != nil {
+			return nil, err
+		}
+		var result threadSearchResponse
+		if err := json.Unmarshal(body, &result); err != nil {
+			return nil, fmt.Errorf("decode thread search: %w", err)
+		}
+		all = append(all, result.Threads...)
+		if !result.HasMore || len(result.Threads) == 0 {
+			break
+		}
+		offset += len(result.Threads)
+		time.Sleep(300 * time.Millisecond)
+	}
+	return all, nil
+}
+
 // FetchThreads returns all active and archived public threads for a forum/media channel.
-func FetchThreads(s *discordgo.Session, channelID string) ([]*discordgo.Channel, error) {
+// For bot tokens it uses the standard ThreadsActive endpoint; for user tokens it falls
+// back to the threads/search endpoint that Discord's own app uses.
+func FetchThreads(s *discordgo.Session, channelID, guildID string) ([]*discordgo.Channel, error) {
+	var activeThreads []*discordgo.Channel
+
 	active, err := s.ThreadsActive(channelID)
 	if err != nil {
-		return nil, fmt.Errorf("fetch active threads for %s: %w", channelID, err)
+		if isUserTokenForbidden(err) {
+			// Bot-only endpoint. Use the search endpoint instead — works with user tokens.
+			activeThreads, err = fetchActiveThreadsUserToken(s, channelID)
+			if err != nil {
+				return nil, fmt.Errorf("fetch active threads (user token) for %s: %w", channelID, err)
+			}
+		} else {
+			return nil, fmt.Errorf("fetch active threads for %s: %w", channelID, err)
+		}
+	} else {
+		activeThreads = active.Threads
 	}
 
-	threads := make([]*discordgo.Channel, 0, len(active.Threads))
-	threads = append(threads, active.Threads...)
+	threads := make([]*discordgo.Channel, 0, len(activeThreads))
+	threads = append(threads, activeThreads...)
 
 	// Paginate archived threads until exhausted; before=nil starts from most recent
 	var before *time.Time
@@ -118,7 +182,6 @@ func FetchThreads(s *discordgo.Session, channelID string) ([]*discordgo.Channel,
 		if !archived.HasMore || len(archived.Threads) == 0 {
 			break
 		}
-		// Use the archive timestamp of the last thread as the next cursor
 		last := archived.Threads[len(archived.Threads)-1]
 		if last.ThreadMetadata != nil && !last.ThreadMetadata.ArchiveTimestamp.IsZero() {
 			t := last.ThreadMetadata.ArchiveTimestamp
