@@ -1,13 +1,12 @@
 # 🎮 discocli — Discord CLI + MCP Server
 
-Sync, search, and download from Discord — in your terminal and for AI agents.
+Interact with Discord from your terminal. Built for developers and AI agents.
 
 ```bash
-discocli sync --guild "My Server" --channel "fan-art"
-discocli search "contract rate"
-discocli download --channel "ai-art" --since 30d --min-reactions 3
-discocli fetch-links --channel "fan-art"
-discocli serve   # MCP server for AI agents
+discocli sync --follow                  # real-time message capture
+discocli search "deployment issue"      # offline full-text search
+discocli send --to "#general" --text "Build passed ✅"
+discocli serve                          # MCP server for AI agents
 ```
 
 ## Install
@@ -28,14 +27,14 @@ Move the binary somewhere on your `$PATH` (e.g. `~/bin/discocli`).
 # 1. Save your token
 discocli auth
 
-# 2. Sync a channel
+# 2. Sync message history
 discocli sync --guild "My Server" --channel "general"
 
 # 3. Search offline
 discocli search "standup notes"
 
-# 4. Download media
-discocli download --channel "general"
+# 4. Send a message
+discocli send --to "#general" --text "Hello from the terminal!"
 ```
 
 ## Commands
@@ -61,13 +60,42 @@ discocli search "query" --guild "My Server" --channel "general"
 discocli search "query" --limit 20
 ```
 
-Full-text search over locally synced messages using SQLite FTS5.
+Full-text search over locally synced messages using SQLite FTS5. All offline — no API calls.
 
-### Download
+### Send
 
 ```bash
-discocli download                                         # all pending attachments
-discocli download --channel "art" --type image            # images only (not GIFs)
+discocli send --to "#general" --text "Hello from the terminal!"
+discocli send --to "username#1234" --text "DM from the CLI"
+```
+
+### Guilds & Channels
+
+```bash
+discocli guilds                         # list all servers
+discocli channels                       # list synced channels
+discocli channels --guild "My Server"   # channels in a specific server
+```
+
+### Other
+
+```bash
+discocli auth      # save token to ~/.discocli/token
+discocli whoami    # show authenticated user
+discocli serve     # start MCP server (stdio)
+```
+
+---
+
+## Media & Downloads
+
+These commands build on the synced message database to pull media off Discord.
+
+### download
+
+```bash
+discocli download                                          # all pending attachments
+discocli download --channel "art" --type image             # images only (not GIFs)
 discocli download --channel "art" --type gif
 discocli download --channel "art" --type video
 discocli download --channel "ai-art" --since 30d --min-reactions 3
@@ -77,7 +105,6 @@ discocli download --out ~/Desktop/media
 Downloads direct Discord attachments (images, GIFs, videos) to disk.
 Already-downloaded files are skipped on re-runs.
 
-**Flags:**
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--type` | `all` | `image`, `gif`, `video`, `all` |
@@ -90,35 +117,23 @@ Already-downloaded files are skipped on re-runs.
 
 ```bash
 discocli fetch-links --guild "My Server" --channel "fan-art"
-discocli fetch-links --channel "fan-art" --backfill    # extract URLs from old messages
+discocli fetch-links --channel "fan-art" --backfill   # scan old messages for URLs
 discocli fetch-links --channel "fan-art" --limit 50
 ```
 
-Downloads images from external links posted in Discord (Twitter/X, Pixiv, ArtStation, etc.).
+Downloads images from external links in messages (Twitter/X, Pixiv, ArtStation, Imgur, etc.).
 
-Uses Discord's own embed CDN proxy (`media.discordapp.net`) when available — the same URL
-the Discord "Download" button hits. Falls back to `og:image` scraping for text-only links
-without an embed. To populate embed URLs for an existing channel, clear its sync state
-and re-sync.
+Uses Discord's embed CDN proxy (`media.discordapp.net`) when available — same URL as the
+in-app Download button. Falls back to `og:image` scraping for raw text URLs with no embed.
 
 ### top
 
 ```bash
-discocli top --channel "fan-art" --limit 20
-discocli top --guild "My Server" --channel "fan-art"
+discocli top --channel "fan-art"
+discocli top --guild "My Server" --channel "fan-art" --limit 20
 ```
 
 Shows the most-reacted messages in a channel.
-
-### Other
-
-```bash
-discocli auth              # save token to ~/.discocli/token
-discocli whoami            # show authenticated user
-discocli guilds            # list all servers
-discocli channels          # list synced channels
-discocli serve             # start MCP server (stdio)
-```
 
 ## MCP Server (AI Agents)
 
