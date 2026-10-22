@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -22,6 +23,7 @@ var (
 	syncFollow  bool
 	syncSince   string
 	syncAll     bool
+	syncQuiet   bool
 )
 
 var syncCmd = &cobra.Command{
@@ -30,7 +32,9 @@ var syncCmd = &cobra.Command{
 	Long: `Sync message history from Discord into the local SQLite database.
 Without flags, syncs the default guild saved in <store>/guild, or all
 accessible channels if no default is set (or --all is passed).
-Use --follow to keep running and capture new messages in real-time.`,
+Use --follow to keep running and capture new messages in real-time; it
+catches up on anything missed each time it (re)connects. Run it in the
+background with ` + "`discocli daemon install`" + `.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		store := resolvedStore()
 		if err := config.EnsureStore(store); err != nil {
@@ -58,7 +62,7 @@ Use --follow to keep running and capture new messages in real-time.`,
 		}
 
 		if syncFollow {
-			return runGatewaySync(session, db)
+			return runGatewaySync(session, db, syncGuild)
 		}
 
 		var stopBefore string
@@ -74,7 +78,7 @@ Use --follow to keep running and capture new messages in real-time.`,
 		s.Suffix = " Syncing messages..."
 		s.Start()
 
-		count, err := performHistoricalSync(session, db, stopBefore)
+		count, err := performHistoricalSync(session, db, syncGuild, syncChannel, stopBefore)
 		s.Stop()
 
 		if err != nil {
@@ -89,9 +93,9 @@ Use --follow to keep running and capture new messages in real-time.`,
 	},
 }
 
-func performHistoricalSync(session *discordgo.Session, db *storage.DB, stopBefore string) (int, error) {
+func performHistoricalSync(session *discordgo.Session, db *storage.DB, guild, channel, stopBefore string) (int, error) {
 	// Resolve which channels to sync
-	channelIDs, err := resolveTargetChannels(session, db)
+	channelIDs, err := resolveTargetChannels(session, db, guild, channel)
 	if err != nil {
 		return 0, err
 	}
@@ -106,10 +110,14 @@ func performHistoricalSync(session *discordgo.Session, db *storage.DB, stopBefor
 		count, err := syncChannelHistory(session, db, chID, stopBefore)
 		elapsed := time.Since(start).Round(time.Second)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "warning: failed to sync channel %s: %v\n", chName, err)
+			// Unreadable channels fail the same way every run; in the
+			// background log they would only bury real problems.
+			if !(syncQuiet && discord.IsForbidden(err)) {
+				fmt.Fprintf(os.Stderr, "warning: failed to sync channel %s: %v\n", chName, err)
+			}
 			continue
 		}
-		if count > 0 {
+		if count > 0 && !syncQuiet {
 			fmt.Printf("  #%-40s %5d msgs  %s\n", chName, count, elapsed)
 		}
 		totalCount += count
@@ -117,19 +125,19 @@ func performHistoricalSync(session *discordgo.Session, db *storage.DB, stopBefor
 	return totalCount, nil
 }
 
-func resolveTargetChannels(session *discordgo.Session, db *storage.DB) ([]string, error) {
+func resolveTargetChannels(session *discordgo.Session, db *storage.DB, guild, channel string) ([]string, error) {
 	// If specific channel ID given
-	if syncChannel != "" && isSnowflake(syncChannel) {
-		return []string{syncChannel}, nil
+	if channel != "" && isSnowflake(channel) {
+		return []string{channel}, nil
 	}
 
 	// Get guilds to scan
 	var guildIDs []string
-	if syncGuild != "" {
-		if isSnowflake(syncGuild) {
-			guildIDs = []string{syncGuild}
+	if guild != "" {
+		if isSnowflake(guild) {
+			guildIDs = []string{guild}
 		} else {
-			g, err := discord.ResolveGuildByName(session, syncGuild)
+			g, err := discord.ResolveGuildByName(session, guild)
 			if err != nil {
 				return nil, err
 			}
@@ -162,7 +170,7 @@ func resolveTargetChannels(session *discordgo.Session, db *storage.DB) ([]string
 		}
 		for _, ch := range channels {
 			// Filter by channel name if specified
-			if syncChannel != "" && ch.Name != syncChannel {
+			if channel != "" && ch.Name != channel {
 				continue
 			}
 
@@ -175,7 +183,9 @@ func resolveTargetChannels(session *discordgo.Session, db *storage.DB) ([]string
 				_ = db.UpsertChannel(ch.ID, gID, ch.Name, int(ch.Type), ch.Topic, "")
 				threads, err := discord.FetchThreads(session, ch.ID, gID)
 				if err != nil {
-					fmt.Fprintf(os.Stderr, "warning: failed to fetch threads for %s (#%s): %v\n", ch.ID, ch.Name, err)
+					if !(syncQuiet && discord.IsForbidden(err)) {
+						fmt.Fprintf(os.Stderr, "warning: failed to fetch threads for %s (#%s): %v\n", ch.ID, ch.Name, err)
+					}
 					continue
 				}
 				for _, t := range threads {
@@ -304,35 +314,116 @@ func upsertMsg(db *storage.DB, m *discordgo.Message) error {
 	return nil
 }
 
-func runGatewaySync(session *discordgo.Session, db *storage.DB) error {
+// runGatewaySync stores new messages as the gateway delivers them. On every
+// fresh connection (startup, or a reconnect Discord could not resume) it runs
+// an incremental REST sync in the background, so nothing sent while the
+// machine was asleep or offline is missed. Resumed connections need no
+// catch-up: Discord replays the missed events itself.
+func runGatewaySync(session *discordgo.Session, db *storage.DB, guild string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	session.AddHandler(func(s *discordgo.Session, m *discordgo.MessageCreate) {
-		ts := m.Timestamp
-		_ = db.UpsertMessage(
-			m.ID, m.ChannelID, m.GuildID,
-			m.Author.ID, m.Author.Username,
-			m.Content, ts, false, 0,
-		)
-		name, _ := db.GetChannelName(m.ChannelID)
-		if name == "" {
-			name = m.ChannelID
+	guildID := guild
+	if guild != "" && !isSnowflake(guild) {
+		g, err := discord.ResolveGuildByName(session, guild)
+		if err != nil {
+			return err
 		}
-		fmt.Printf("[%s] #%s — %s: %s\n",
-			ts.Format("15:04:05"), name, m.Author.Username, m.Content)
+		guildID = g.ID
+	}
+
+	logf := func(format string, args ...any) {
+		fmt.Printf("%s "+format+"\n", append([]any{time.Now().Format(time.RFC3339)}, args...)...)
+	}
+
+	var catchingUp sync.Mutex
+	session.AddHandler(func(s *discordgo.Session, r *discordgo.Ready) {
+		go func() {
+			if !catchingUp.TryLock() {
+				return
+			}
+			defer catchingUp.Unlock()
+			logf("connected; catching up")
+			start := time.Now()
+			n, err := performHistoricalSync(s, db, guildID, "", "")
+			if err != nil {
+				logf("catch-up failed: %v", err)
+				return
+			}
+			logf("caught up: %d new messages in %s", n, time.Since(start).Round(time.Second))
+		}()
 	})
 
-	session.Identify.Intents = discordgo.IntentsGuildMessages | discordgo.IntentsDirectMessages
+	store := func(s *discordgo.Session, m *discordgo.Message) {
+		if m.Author == nil || (guildID != "" && m.GuildID != guildID) {
+			return
+		}
+		name := ensureChannel(s, db, m.ChannelID)
+		if err := upsertMsg(db, m); err != nil {
+			logf("store message %s: %v", m.ID, err)
+			return
+		}
+		if !syncQuiet {
+			fmt.Printf("[%s] #%s — %s: %s\n",
+				m.Timestamp.Local().Format("15:04:05"), name, m.Author.Username, m.Content)
+		}
+	}
+	session.AddHandler(func(s *discordgo.Session, m *discordgo.MessageCreate) { store(s, m.Message) })
+	session.AddHandler(func(s *discordgo.Session, m *discordgo.MessageUpdate) { store(s, m.Message) })
+
+	markDeleted := func(guild, id string) {
+		if guildID != "" && guild != guildID {
+			return
+		}
+		chID, author, content, err := db.MarkMessageDeleted(id)
+		if err != nil {
+			logf("%v", err)
+			return
+		}
+		if !syncQuiet {
+			name, _ := db.GetChannelName(chID)
+			fmt.Printf("[deleted] #%s — %s: %s\n", name, author, content)
+		}
+	}
+	session.AddHandler(func(s *discordgo.Session, m *discordgo.MessageDelete) { markDeleted(m.GuildID, m.ID) })
+	session.AddHandler(func(s *discordgo.Session, m *discordgo.MessageDeleteBulk) {
+		for _, id := range m.Messages {
+			markDeleted(m.GuildID, id)
+		}
+	})
+
+	// User accounts get empty message content unless the intent is asked for.
+	session.Identify.Intents = discordgo.IntentsGuildMessages | discordgo.IntentsDirectMessages | discordgo.IntentsMessageContent
 	if err := session.Open(); err != nil {
 		return fmt.Errorf("failed to open gateway: %w", err)
 	}
 	defer session.Close()
 
-	fmt.Println("🔴 Live sync active — press Ctrl+C to stop")
+	if guildID != "" {
+		logf("live sync active for guild %s — press Ctrl+C to stop", guildID)
+	} else {
+		logf("live sync active for all guilds — press Ctrl+C to stop")
+	}
 	<-ctx.Done()
-	fmt.Println("\nStopping...")
+	logf("stopping")
 	return nil
+}
+
+// ensureChannel returns the channel's name, recording the channel first if
+// this is the first message seen in it (e.g. a thread created after the last
+// sync) so it shows up in search and channel listings.
+func ensureChannel(s *discordgo.Session, db *storage.DB, channelID string) string {
+	if name, _ := db.GetChannelName(channelID); name != "" {
+		return name
+	}
+	ch, err := s.State.Channel(channelID)
+	if err != nil {
+		if ch, err = s.Channel(channelID); err != nil {
+			return channelID
+		}
+	}
+	_ = db.UpsertChannel(ch.ID, ch.GuildID, ch.Name, int(ch.Type), ch.Topic, ch.ParentID)
+	return ch.Name
 }
 
 func init() {
@@ -340,6 +431,7 @@ func init() {
 	syncCmd.Flags().StringVar(&syncChannel, "channel", "", "Channel name or ID to sync")
 	syncCmd.Flags().BoolVar(&syncAll, "all", false, "Sync all guilds, ignoring the default guild")
 	syncCmd.Flags().BoolVar(&syncFollow, "follow", false, "Keep running and sync new messages in real-time")
+	syncCmd.Flags().BoolVar(&syncQuiet, "quiet", false, "Do not print messages or per-channel progress (for background use)")
 	syncCmd.Flags().StringVar(&syncSince, "since", "", "Only sync messages on/after this date (e.g. 30d, 6m, 1y, 2026-01-01)")
 	rootCmd.AddCommand(syncCmd)
 }

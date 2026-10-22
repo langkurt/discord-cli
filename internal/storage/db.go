@@ -20,7 +20,9 @@ func Open(path string) (*DB, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return nil, fmt.Errorf("failed to create db directory: %w", err)
 	}
-	conn, err := sql.Open("sqlite", path+"?_journal_mode=WAL&_foreign_keys=on")
+	// modernc.org/sqlite only honours _pragma= parameters. WAL plus a busy
+	// timeout lets the background follower and a manual sync share the file.
+	conn, err := sql.Open("sqlite", path+"?_pragma=journal_mode(WAL)&_pragma=busy_timeout(10000)")
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
@@ -134,6 +136,23 @@ func (db *DB) migrate() error {
 		// proxy_url: Discord's own CDN proxy (media.discordapp.net) — embed images captured during sync.
 		// When set, we download from this URL directly instead of scraping og:image.
 		`ALTER TABLE links ADD COLUMN proxy_url TEXT`,
+		// Edit and delete history. Messages are never removed: a deletion seen
+		// on the gateway sets deleted_at, and every content change keeps the
+		// previous text in message_revisions. An empty old content is skipped
+		// so filling in a message first stored without text is not an "edit".
+		`ALTER TABLE messages ADD COLUMN deleted_at DATETIME`,
+		`CREATE TABLE IF NOT EXISTS message_revisions (
+			id          INTEGER PRIMARY KEY,
+			message_id  TEXT NOT NULL,
+			content     TEXT NOT NULL,
+			replaced_at DATETIME NOT NULL
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_revisions_message ON message_revisions(message_id)`,
+		`CREATE TRIGGER IF NOT EXISTS messages_revision AFTER UPDATE OF content ON messages
+			WHEN old.content <> new.content AND old.content <> '' BEGIN
+			INSERT INTO message_revisions(message_id, content, replaced_at)
+			VALUES (old.id, old.content, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'));
+		END`,
 	}
 
 	for _, stmt := range stmts {

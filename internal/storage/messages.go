@@ -5,15 +5,22 @@ import (
 	"time"
 )
 
-// UpsertMessage inserts or replaces a message (idempotent for sync).
+// UpsertMessage inserts or updates a message (idempotent for sync).
+// It updates in place rather than INSERT OR REPLACE so the update triggers
+// fire: they keep the FTS index in step and record edit history.
 func (db *DB) UpsertMessage(id, channelID, guildID, authorID, authorName, content string, timestamp time.Time, edited bool, reactionCount int) error {
 	editedInt := 0
 	if edited {
 		editedInt = 1
 	}
 	_, err := db.conn.Exec(`
-		INSERT OR REPLACE INTO messages (id, channel_id, guild_id, author_id, author_name, content, timestamp, edited, reaction_count)
+		INSERT INTO messages (id, channel_id, guild_id, author_id, author_name, content, timestamp, edited, reaction_count)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET
+			author_name = excluded.author_name,
+			content = excluded.content,
+			edited = excluded.edited,
+			reaction_count = excluded.reaction_count
 	`, id, channelID, guildID, authorID, authorName, content, timestamp.UTC().Format(time.RFC3339), editedInt, reactionCount)
 	if err != nil {
 		return fmt.Errorf("upsert message %s: %w", id, err)
@@ -142,4 +149,33 @@ func (db *DB) ListSyncedChannels() ([]SyncedChannel, error) {
 		result = append(result, sc)
 	}
 	return result, rows.Err()
+}
+
+// LatestMessageTime returns the timestamp of the newest stored message in a
+// guild (name or ID), or across all guilds when guild is empty.
+func (db *DB) LatestMessageTime(guild string) (time.Time, error) {
+	var ts string
+	err := db.conn.QueryRow(`
+		SELECT COALESCE(MAX(timestamp), '') FROM messages
+		WHERE ? = '' OR guild_id = ? OR guild_id IN (SELECT id FROM guilds WHERE name = ?)
+	`, guild, guild, guild).Scan(&ts)
+	if err != nil || ts == "" {
+		return time.Time{}, err
+	}
+	return time.Parse(time.RFC3339, ts)
+}
+
+// MarkMessageDeleted records that a message was deleted on Discord. The
+// message itself is kept. It reports the stored channel, author and content
+// (empty if the message was never synced).
+func (db *DB) MarkMessageDeleted(id string) (channelID, author, content string, err error) {
+	_, err = db.conn.Exec(`
+		UPDATE messages SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL
+	`, time.Now().UTC().Format(time.RFC3339), id)
+	if err != nil {
+		return "", "", "", fmt.Errorf("mark message %s deleted: %w", id, err)
+	}
+	_ = db.conn.QueryRow(`SELECT channel_id, author_name, content FROM messages WHERE id = ?`, id).
+		Scan(&channelID, &author, &content)
+	return channelID, author, content, nil
 }

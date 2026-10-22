@@ -2,6 +2,7 @@ package discord
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/rand"
 	"time"
@@ -96,6 +97,13 @@ func isRateLimit(err error) bool {
 	}
 	restErr, ok := err.(*discordgo.RESTError)
 	return ok && restErr.Response != nil && restErr.Response.StatusCode == 429
+}
+
+// IsForbidden reports whether err is an HTTP 403, e.g. a channel the account
+// can see listed but not read.
+func IsForbidden(err error) bool {
+	var restErr *discordgo.RESTError
+	return errors.As(err, &restErr) && restErr.Response != nil && restErr.Response.StatusCode == 403
 }
 
 // isUserTokenForbidden checks for HTTP 403 with Discord code 20002

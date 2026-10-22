@@ -59,6 +59,32 @@ echo "My Server" > ~/.discocli/guild
 Supports all channel types: text, announcement, voice, forum, media, and threads.
 Incremental — resumes from where it left off on subsequent runs.
 
+### Keeping it current
+
+```bash
+discocli daemon install      # launchd agent: starts at login, restarts if it dies
+discocli daemon status       # running? how old is the newest message?
+discocli daemon log          # what it has been doing
+discocli daemon uninstall
+```
+
+The daemon runs `discocli sync --follow --quiet`: it stores messages as the
+gateway delivers them, and every time it connects (login, wake from sleep,
+network back) it runs an incremental sync to fill in anything it missed. It
+follows the default guild, or every guild if none is set (macOS only).
+
+### Edit and delete history
+
+Nothing is ever removed from the local database. When a message is edited,
+the previous text is kept in `message_revisions`; when one is deleted, the
+message stays and `deleted_at` is set. Edits are caught by any sync; deletions
+only by the live follower, since Discord's API doesn't report them afterwards.
+
+```bash
+sqlite3 ~/.discocli/data.db "SELECT * FROM message_revisions WHERE message_id = '...'"
+sqlite3 ~/.discocli/data.db "SELECT author_name, content FROM messages WHERE deleted_at IS NOT NULL"
+```
+
 ### Search
 
 ```bash
