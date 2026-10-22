@@ -21,13 +21,15 @@ var (
 	syncChannel string
 	syncFollow  bool
 	syncSince   string
+	syncAll     bool
 )
 
 var syncCmd = &cobra.Command{
 	Use:   "sync",
 	Short: "Sync Discord messages to local database",
 	Long: `Sync message history from Discord into the local SQLite database.
-Without flags, syncs all accessible channels.
+Without flags, syncs the default guild saved in <store>/guild, or all
+accessible channels if no default is set (or --all is passed).
 Use --follow to keep running and capture new messages in real-time.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		store := resolvedStore()
@@ -50,6 +52,10 @@ Use --follow to keep running and capture new messages in real-time.`,
 			return err
 		}
 		defer db.Close()
+
+		if syncGuild == "" && !syncAll {
+			syncGuild = config.DefaultGuild(store)
+		}
 
 		if syncFollow {
 			return runGatewaySync(session, db)
@@ -332,6 +338,7 @@ func runGatewaySync(session *discordgo.Session, db *storage.DB) error {
 func init() {
 	syncCmd.Flags().StringVar(&syncGuild, "guild", "", "Guild (server) name or ID to sync")
 	syncCmd.Flags().StringVar(&syncChannel, "channel", "", "Channel name or ID to sync")
+	syncCmd.Flags().BoolVar(&syncAll, "all", false, "Sync all guilds, ignoring the default guild")
 	syncCmd.Flags().BoolVar(&syncFollow, "follow", false, "Keep running and sync new messages in real-time")
 	syncCmd.Flags().StringVar(&syncSince, "since", "", "Only sync messages on/after this date (e.g. 30d, 6m, 1y, 2026-01-01)")
 	rootCmd.AddCommand(syncCmd)

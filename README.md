@@ -42,11 +42,18 @@ discocli send --to "#general" --text "Hello from the terminal!"
 ### Sync
 
 ```bash
-discocli sync                                        # sync all accessible channels
+discocli sync                                        # default guild (if set), else all channels
+discocli sync --all                                  # all accessible channels
 discocli sync --guild "My Server"                    # one server
 discocli sync --guild "My Server" --channel "art"    # one channel
 discocli sync --since 30d                            # only messages from last 30 days
 discocli sync --follow                               # real-time gateway sync (live tail)
+```
+
+To set a default guild, write its name or ID to `~/.discocli/guild`:
+
+```bash
+echo "My Server" > ~/.discocli/guild
 ```
 
 Supports all channel types: text, announcement, voice, forum, media, and threads.
